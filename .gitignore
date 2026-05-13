@@ -4,3 +4,7 @@ build*
 .venv*
 .vscode*
 modules*
+zephyr/
+zmk/
+compile_commands.json
+log
