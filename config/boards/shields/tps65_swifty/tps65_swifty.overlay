@@ -2,31 +2,31 @@
  * Azoteq IQS5xx (TPS65) touchpad add-on for the Swifty keyboard
  * running on nice_nano (nRF52840).
  *
- * Wiring (Pro Micro footprint -> nRF52840 SoC pin):
- *   D0 / P0.08 -> TPS65 SDA
- *   D1 / P0.06 -> TPS65 SCL
- *   D7 / P0.11 -> TPS65 RDY     (active-high, open-drain; needs pull-up)
- *   D8 / P1.04 -> TPS65 NRST    (active-low; optional)
- *   3V3        -> TPS65 VDD
- *   GND        -> TPS65 GND
+ * SoC pin assignment (use the free pins on the Swifty PCB):
+ *   P0.13 -> TPS65 SDA
+ *   P0.15 -> TPS65 SCL
+ *   P0.17 -> TPS65 RDY    (active-high, open-drain; pull-up applied)
+ *   P0.19 -> TPS65 NRST   (active-low; optional)
+ *   3V3   -> TPS65 VDD
+ *   GND   -> TPS65 GND
  *
- * Reuses i2c0; overrides its pinctrl so the default SDA/SCL on
- * P0.17/P0.20 (already used by swifty's kscan matrix) is not touched.
+ * Reuses i2c0 with custom pinctrl so the default SDA/SCL pin
+ * defaults are not touched.
  */
 
 &pinctrl {
     i2c0_default: i2c0_default {
         group1 {
-            psels = <NRF_PSEL(TWIM_SDA, 0, 8)>,
-                    <NRF_PSEL(TWIM_SCL, 0, 6)>;
+            psels = <NRF_PSEL(TWIM_SDA, 0, 13)>,
+                    <NRF_PSEL(TWIM_SCL, 0, 15)>;
             bias-pull-up;
         };
     };
 
     i2c0_sleep: i2c0_sleep {
         group1 {
-            psels = <NRF_PSEL(TWIM_SDA, 0, 8)>,
-                    <NRF_PSEL(TWIM_SCL, 0, 6)>;
+            psels = <NRF_PSEL(TWIM_SDA, 0, 13)>,
+                    <NRF_PSEL(TWIM_SCL, 0, 15)>;
             low-power-enable;
         };
     };
@@ -55,8 +55,8 @@
         compatible = "azoteq,iqs5xx";
         reg = <0x74>;
 
-        rdy-gpios   = <&gpio0 11 GPIO_ACTIVE_HIGH>;
-        reset-gpios = <&gpio1 4 GPIO_ACTIVE_LOW>;
+        rdy-gpios   = <&gpio0 17 GPIO_ACTIVE_HIGH>;
+        reset-gpios = <&gpio0 19 GPIO_ACTIVE_LOW>;
 
         one-finger-tap;
         two-finger-tap;
