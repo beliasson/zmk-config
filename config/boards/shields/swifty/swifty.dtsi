@@ -132,32 +132,33 @@
 	};
 };
 
+&uicr {
+	nfct-pins-as-gpios;
+};
+
 i2s_led: &i2s0 {
 	status = "okay";
 	pinctrl-0 = <&i2s0_default_alt>;
 	pinctrl-names = "default";
+
+	led_strip: ws2812@0 {
+		compatible = "worldsemi,ws2812-i2s";
+		reg = <0>;
+		chain-length = <25>; /* arbitrary change at will */
+		color-mapping = <LED_COLOR_ID_GREEN
+				 LED_COLOR_ID_RED
+				 LED_COLOR_ID_BLUE>;
+		reset-delay = <120>;
+	};
 };
 
 / {
 	ext_power {
 		compatible = "zmk,ext-power-generic";
-        control-gpios = <&gpio1 6 GPIO_ACTIVE_HIGH>;
-    };
-
-	led_strip: ws2812 {
-		compatible = "worldsemi,ws2812-i2s";
-
-		i2s-dev = <&i2s_led>;
-		chain-length = <25>; /* arbitrary change at will */
-		color-mapping = <LED_COLOR_ID_GREEN
-		LED_COLOR_ID_RED
-		LED_COLOR_ID_BLUE>;
-		reset-delay = <120>;
+		control-gpios = <&gpio1 6 GPIO_ACTIVE_HIGH>;
 	};
 
 	aliases {
 		led-strip = &led_strip;
-
-
 	};
 };

@@ -1,0 +1,9 @@
+file_format: "1"
+id: SWIPPY
+name: swippy
+type: board
+arch: arm
+outputs:
+  - usb
+  - ble
+exposes: [pro_micro]

@@ -1,0 +1,12 @@
+# swippy board configuration
+
+# Copyright (c) 2020 Pete Johanson
+# SPDX-License-Identifier: MIT
+
+config BOARD_SWIPPY
+    select SOC_NRF52840_QIAA
+    select ZMK_BOARD_COMPAT
+    imply RETAINED_MEM
+    imply RETENTION
+    imply RETENTION_BOOT_MODE
+
