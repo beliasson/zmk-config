@@ -1,0 +1,100 @@
+/*
+ * TPS65 (Azoteq IQS5xx) touchpad on an nRF54L-series DK.
+ *
+ * Build target: nrf54l20pdk/nrf54l20/cpuapp (stand-in for nRF54LM20 DK
+ * until ZMK supports the LM20 SoC files in v4.2 Zephyr).
+ *
+ * Physical wiring on the LM20 DK (SoC pins are the same; verify the
+ * LM20 DK's expansion header maps these to accessible pads):
+ *   I2C22 SDA  -> P1.10
+ *   I2C22 SCL  -> P1.11
+ *   IQS5xx RDY -> P1.12   (active-high open-drain; pull-up required)
+ *   IQS5xx NRST-> P1.14   (active-low; optional, omit if hard-tied high)
+ *   3V3        -> module VDD
+ *   GND        -> module GND
+ *
+ * The IQS5xx default 7-bit I2C address is 0x74.
+ */
+
+#include <dt-bindings/zmk/matrix_transform.h>
+#include <physical_layouts.dtsi>
+
+/ {
+    chosen {
+        zmk,kscan = &kscan0;
+        zmk,physical-layout = &physical_layout0;
+    };
+
+    /* One-key direct-GPIO matrix so ZMK has a kscan to satisfy build
+     * checks. Maps to L20 PDK button0 (P1.13) for convenience; on the
+     * LM20 DK this is just a free pin until you wire something. */
+    kscan0: kscan_0 {
+        compatible = "zmk,kscan-gpio-direct";
+        input-gpios = <&gpio1 13 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+    };
+
+    default_transform: keymap_transform_0 {
+        compatible = "zmk,matrix-transform";
+        columns = <1>;
+        rows = <1>;
+        map = <RC(0,0)>;
+    };
+
+    physical_layout0: physical_layout_0 {
+        compatible = "zmk,physical-layout";
+        display-name = "TPS65 DK test";
+        transform = <&default_transform>;
+        kscan = <&kscan0>;
+        keys = <&key_physical_attrs 100 100 0 0 0 0 0>;
+    };
+
+    /* ZMK input listener wiring the IQS5xx events into the pointing
+     * subsystem. The listener picks up REL_X / REL_Y / BTN_* events
+     * the driver emits and turns them into mouse HID reports. */
+    tps65_listener: tps65_listener {
+        compatible = "zmk,input-listener";
+        device = <&tps65>;
+    };
+};
+
+&pinctrl {
+    i2c22_default: i2c22_default {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SDA, 1, 10)>,
+                    <NRF_PSEL(TWIM_SCL, 1, 11)>;
+            bias-pull-up;
+        };
+    };
+
+    i2c22_sleep: i2c22_sleep {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SDA, 1, 10)>,
+                    <NRF_PSEL(TWIM_SCL, 1, 11)>;
+            low-power-enable;
+        };
+    };
+};
+
+&i2c22 {
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_FAST>;
+    pinctrl-0 = <&i2c22_default>;
+    pinctrl-1 = <&i2c22_sleep>;
+    pinctrl-names = "default", "sleep";
+
+    tps65: iqs5xx@74 {
+        status = "okay";
+        compatible = "azoteq,iqs5xx";
+        reg = <0x74>;
+
+        rdy-gpios   = <&gpio1 12 GPIO_ACTIVE_HIGH>;
+        reset-gpios = <&gpio1 14 GPIO_ACTIVE_LOW>;
+
+        one-finger-tap;
+        two-finger-tap;
+        press-and-hold;
+        press-and-hold-time = <250>;
+
+        scroll;
+    };
+};

@@ -17,3 +17,7 @@ include:
     shield: swweeep_left nice_view_adapter nice_view
   - board: nice_nano//zmk
     shield: swweeep_right nice_view_adapter nice_view
+  # nRF54LM20 DK touchpad bring-up. Builds against the L20 PDK target
+  # (already supported in v4.1.0+zmk-fixes) as a stand-in for LM20.
+  - board: nrf54l20pdk/nrf54l20/cpuapp
+    shield: tps65_dk
