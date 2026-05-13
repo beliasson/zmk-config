@@ -2,3 +2,5 @@ build*
 .west*
 .cache*
 .venv*
+.vscode*
+modules*
