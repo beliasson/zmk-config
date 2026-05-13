@@ -21,3 +21,6 @@ include:
   # (already supported in v4.1.0+zmk-fixes) as a stand-in for LM20.
   - board: nrf54l20pdk/nrf54l20/cpuapp
     shield: tps65_dk
+  # Swifty (nice_nano / nRF52840) with the TPS65 touchpad add-on.
+  - board: nice_nano//zmk
+    shield: swifty_left tps65_swifty

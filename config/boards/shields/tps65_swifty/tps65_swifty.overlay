@@ -1,0 +1,96 @@
+/*
+ * Azoteq IQS5xx (TPS65) touchpad add-on for the Swifty keyboard
+ * running on nice_nano (nRF52840).
+ *
+ * Wiring (Pro Micro footprint -> nRF52840 SoC pin):
+ *   D0 / P0.08 -> TPS65 SDA
+ *   D1 / P0.06 -> TPS65 SCL
+ *   D7 / P0.11 -> TPS65 RDY     (active-high, open-drain; needs pull-up)
+ *   D8 / P1.04 -> TPS65 NRST    (active-low; optional)
+ *   3V3        -> TPS65 VDD
+ *   GND        -> TPS65 GND
+ *
+ * Reuses i2c0; overrides its pinctrl so the default SDA/SCL on
+ * P0.17/P0.20 (already used by swifty's kscan matrix) is not touched.
+ */
+
+&pinctrl {
+    i2c0_default: i2c0_default {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SDA, 0, 8)>,
+                    <NRF_PSEL(TWIM_SCL, 0, 6)>;
+            bias-pull-up;
+        };
+    };
+
+    i2c0_sleep: i2c0_sleep {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SDA, 0, 8)>,
+                    <NRF_PSEL(TWIM_SCL, 0, 6)>;
+            low-power-enable;
+        };
+    };
+
+    /*
+     * Stub: swifty.dtsi references &i2s0_default_alt but no group is
+     * defined anywhere. Provide a no-op group so the DT parses;
+     * i2s0 itself is disabled below.
+     */
+    i2s0_default_alt: i2s0_default_alt {
+        group1 {
+            psels = <NRF_PSEL_DISCONNECTED(I2S_SDOUT)>;
+        };
+    };
+};
+
+&i2c0 {
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_FAST>;
+    pinctrl-0 = <&i2c0_default>;
+    pinctrl-1 = <&i2c0_sleep>;
+    pinctrl-names = "default", "sleep";
+
+    tps65: iqs5xx@74 {
+        status = "okay";
+        compatible = "azoteq,iqs5xx";
+        reg = <0x74>;
+
+        rdy-gpios   = <&gpio0 11 GPIO_ACTIVE_HIGH>;
+        reset-gpios = <&gpio1 4 GPIO_ACTIVE_LOW>;
+
+        one-finger-tap;
+        two-finger-tap;
+        press-and-hold;
+        press-and-hold-time = <250>;
+
+        scroll;
+    };
+};
+
+/ {
+    tps65_listener: tps65_listener {
+        compatible = "zmk,input-listener";
+        device = <&tps65>;
+    };
+};
+
+/*
+ * swifty.dtsi references &i2s0_default_alt which is not defined
+ * anywhere in this tree (pre-existing incomplete WS2812 wiring).
+ * Disable i2s0 here so the touchpad build succeeds without dragging
+ * in unrelated underglow work.
+ */
+&i2s0 {
+    status = "disabled";
+};
+
+/*
+ * nice_nano's upstream overlay declares an EXT_POWER node on
+ * P0.13; swifty.dtsi declares its own ext_power on P1.6. Both
+ * normalize to the same DT macro name. Drop the upstream one for
+ * this build.
+ */
+/ {
+    /delete-node/ EXT_POWER;
+};
+
