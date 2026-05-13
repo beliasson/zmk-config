@@ -2,13 +2,47 @@ manifest:
   remotes:
     - name: zmkfirmware
       url-base: https://github.com/zmkfirmware
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
     - name: aym1607
       url-base: https://github.com/AYM1607
   projects:
+    # Override Zephyr to upstream v4.2.0 instead of zmkfirmware's
+    # v4.1.0+zmk-fixes fork. v4.2.0 is the first release to ship
+    # nRF54LM20 board + SoC files (and the matching nrfx mdk headers
+    # via the hal_nordic pin it pulls in). ZMK app code is not officially
+    # tested against 4.2 yet -- expect to chase compile-time breakage.
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v4.2.0
+      clone-depth: 1
+      import:
+        name-blocklist:
+          - ci-tools
+          - hal_altera
+          - hal_cypress
+          - hal_infineon
+          - hal_microchip
+          - hal_nxp
+          - hal_openisa
+          - hal_xtensa
+          - hal_st
+          - hal_ti
+          - loramac-node
+          - mcuboot
+          - mcumgr
+          - net-tools
+          - openthread
+          - edtt
+          - trusted-firmware-m
     - name: zmk
       remote: zmkfirmware
       revision: main
-      import: app/west.yml
+      import:
+        file: app/west.yml
+        # Skip ZMK's own zephyr pin; we declare it above at v4.2.0.
+        name-blocklist:
+          - zephyr
     - name: zmk-driver-azoteq-iqs5xx
       remote: aym1607
       revision: 27321f0232b50f0af31eb27ff97d539933467ea4
