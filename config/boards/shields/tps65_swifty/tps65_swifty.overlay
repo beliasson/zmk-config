@@ -31,16 +31,6 @@
         };
     };
 
-    /*
-     * Stub: swifty.dtsi references &i2s0_default_alt but no group is
-     * defined anywhere. Provide a no-op group so the DT parses;
-     * i2s0 itself is disabled below.
-     */
-    i2s0_default_alt: i2s0_default_alt {
-        group1 {
-            psels = <NRF_PSEL_DISCONNECTED(I2S_SDOUT)>;
-        };
-    };
 };
 
 &i2c0 {
@@ -74,23 +64,4 @@
     };
 };
 
-/*
- * swifty.dtsi references &i2s0_default_alt which is not defined
- * anywhere in this tree (pre-existing incomplete WS2812 wiring).
- * Disable i2s0 here so the touchpad build succeeds without dragging
- * in unrelated underglow work.
- */
-&i2s0 {
-    status = "disabled";
-};
-
-/*
- * nice_nano's upstream overlay declares an EXT_POWER node on
- * P0.13; swifty.dtsi declares its own ext_power on P1.6. Both
- * normalize to the same DT macro name. Drop the upstream one for
- * this build.
- */
-/ {
-    /delete-node/ EXT_POWER;
-};
 

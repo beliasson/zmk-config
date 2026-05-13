@@ -137,6 +137,21 @@
 	nfct-pins-as-gpios;
 };
 
+&pinctrl {
+	/*
+	 * Placeholder until the WS2812 data line is routed to a real
+	 * pad. NRF_PSEL_DISCONNECTED lets the DT parse so the rest of
+	 * the keyboard builds even without functioning underglow.
+	 * Replace with the real <NRF_PSEL(I2S_SDOUT, port, pin)> once
+	 * the LED data pin is known.
+	 */
+	i2s0_default_alt: i2s0_default_alt {
+		group1 {
+			psels = <NRF_PSEL_DISCONNECTED(I2S_SDOUT)>;
+		};
+	};
+};
+
 i2s_led: &i2s0 {
 	status = "okay";
 	pinctrl-0 = <&i2s0_default_alt>;
@@ -153,12 +168,17 @@ i2s_led: &i2s0 {
 	};
 };
 
-/ {
-	ext_power {
-		compatible = "zmk,ext-power-generic";
-		control-gpios = <&gpio1 6 GPIO_ACTIVE_HIGH>;
-	};
+/*
+ * nice_nano declares an EXT_POWER node on P0.13. Override it to
+ * point at Swifty's actual ext-power control pin on P1.6 instead
+ * of creating a duplicate ext_power node (which collides in the
+ * generated DT macro namespace).
+ */
+&{/EXT_POWER} {
+	control-gpios = <&gpio1 6 GPIO_ACTIVE_HIGH>;
+};
 
+/ {
 	aliases {
 		led-strip = &led_strip;
 	};
