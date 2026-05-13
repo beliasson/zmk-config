@@ -153,7 +153,12 @@
 };
 
 i2s_led: &i2s0 {
-	status = "okay";
+	/*
+	 * Disabled until the WS2812 data line is routed to a real
+	 * pad. With status="okay" + disconnected pinctrl, the I2S
+	 * driver init can wedge the boot before USB enumerates.
+	 */
+	status = "disabled";
 	pinctrl-0 = <&i2s0_default_alt>;
 	pinctrl-names = "default";
 

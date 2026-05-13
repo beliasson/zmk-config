@@ -62,6 +62,17 @@
         compatible = "zmk,input-listener";
         device = <&tps65>;
     };
+
+    chosen {
+        zephyr,console = &uart0;
+        zephyr,shell-uart = &uart0;
+    };
+};
+
+/* UART debug log on TX=P0.06, RX=P0.08 (nice_nano's uart0_default
+ * pinctrl already maps to these pads). */
+&uart0 {
+    status = "okay";
 };
 
 

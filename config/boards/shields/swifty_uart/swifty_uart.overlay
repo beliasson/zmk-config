@@ -1,0 +1,20 @@
+/*
+ * UART debug add-on for Swifty. Routes Zephyr console + log backend
+ * to UART0 with the nice_nano default pinctrl (TX=P0.06, RX=P0.08).
+ * Connect an external USB-UART adapter:
+ *   adapter RX -> P0.06
+ *   adapter TX -> P0.08
+ *   adapter GND -> GND
+ *   115200 8N1
+ */
+
+/ {
+    chosen {
+        zephyr,console = &uart0;
+        zephyr,shell-uart = &uart0;
+    };
+};
+
+&uart0 {
+    status = "okay";
+};
