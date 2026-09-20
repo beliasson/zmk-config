@@ -2,16 +2,21 @@ manifest:
   remotes:
     - name: zmkfirmware
       url-base: https://github.com/zmkfirmware
-    - name: aym1607
-      url-base: https://github.com/AYM1607
+    # Our fork of AYM1607/zmk-driver-azoteq-iqs5xx, which is itself a fork of
+    # Frosthaven's. Frosthaven re-applies the chip configuration after a reset
+    # (the stock driver let it revert to factory defaults, which silently killed
+    # the axis settings); ours adds the cursor/scroll scale fixes and an
+    # independent wheel rate.
+    - name: beliasson
+      url-base: https://github.com/beliasson
   projects:
     - name: zmk
       remote: zmkfirmware
       revision: main
       import: app/west.yml
     - name: zmk-driver-azoteq-iqs5xx
-      remote: aym1607
-      revision: 27321f0232b50f0af31eb27ff97d539933467ea4
+      remote: beliasson
+      revision: 37c51b2a3fa4debb5c37d950e7200a7355004767
       path: modules/lib/zmk-driver-azoteq-iqs5xx
   self:
     path: config
