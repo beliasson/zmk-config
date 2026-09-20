@@ -7,7 +7,7 @@
 #   ./build.sh right        # build + flash the right half
 #   ./build.sh --no-flash   # build only
 #   ./build.sh left --no-flash
-#   ./build.sh --no-patch   # skip zmk.patch, building the zmk tree as it is
+#   ./build.sh --no-patch   # skip patches/, building the zmk tree as it is
 #
 #   ./build.sh reset        # build the settings-reset firmware. Flash it to BOTH
 #                           #   halves to clear the stored BLE bonds (including the
@@ -59,24 +59,29 @@ if [[ -z "${ZEPHYR_SDK_INSTALL_DIR:-}" ]]; then
 fi
 echo "SDK: $ZEPHYR_SDK_INSTALL_DIR"
 
-# Local ZMK patches. zmk.patch is applied to the zmk checkout on every build
-# because `west update` resets it. --reverse --check detects the already-applied
-# state, so this is idempotent and a stale patch fails loudly instead of
-# silently building unpatched firmware. Pass --no-patch to build the checkout
-# as-is, which is what you want while iterating on the patch itself.
+# Local ZMK patches, from patches/, applied in filename order on every build
+# because `west update` resets the zmk checkout. --reverse --check detects the
+# already-applied state, so this is idempotent and a stale patch fails loudly
+# instead of silently building unpatched firmware. Pass --no-patch to build the
+# checkout as-is, which is what you want while working on a patch itself.
 patch_zmk() {
-    local patch="$ROOT/zmk.patch"
-    [[ -f "$patch" ]] || return 0
-    if git -C "$ROOT/zmk" apply --reverse --check "$patch" >/dev/null 2>&1; then
-        echo "zmk.patch: already applied"
-    elif git -C "$ROOT/zmk" apply --check "$patch" >/dev/null 2>&1; then
-        echo "zmk.patch: applying"
-        git -C "$ROOT/zmk" apply "$patch"
-    else
-        echo "error: zmk.patch does not apply to the zmk checkout" >&2
-        echo "       check 'git -C zmk status', then refresh the patch" >&2
-        exit 1
-    fi
+    local patch name
+
+    for patch in "$ROOT"/patches/*.patch; do
+        [[ -e "$patch" ]] || continue
+        name="$(basename "$patch")"
+
+        if git -C "$ROOT/zmk" apply --reverse --check "$patch" >/dev/null 2>&1; then
+            echo "$name: already applied"
+        elif git -C "$ROOT/zmk" apply --check "$patch" >/dev/null 2>&1; then
+            echo "$name: applying"
+            git -C "$ROOT/zmk" apply "$patch"
+        else
+            echo "error: $name does not apply to the zmk checkout" >&2
+            echo "       check 'git -C zmk status', then refresh that patch" >&2
+            exit 1
+        fi
+    done
 }
 
 build() { # $1 = left | right | reset
@@ -139,7 +144,7 @@ if [[ $do_build -eq 1 ]]; then
     if [[ $do_patch -eq 1 ]]; then
         patch_zmk
     else
-        echo "zmk.patch: skipped (--no-patch)"
+        echo "patches: skipped (--no-patch)"
     fi
 fi
 

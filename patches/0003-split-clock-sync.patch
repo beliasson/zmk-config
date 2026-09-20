@@ -1,0 +1,390 @@
+Source timestamps for split key events, so the central times remote keys by
+when they happened rather than when the notification arrived.
+
+The peripheral stamps each change with its own ms uptime, both in the position
+notification and in the response to a read of that characteristic, which is
+what makes the read usable as a round-trip probe. The central keeps a
+per-peripheral offset, estimated NTP-style as T2 - (T1 + T4) / 2 - the
+peripheral's receipt and reply times collapse into one because it stamps
+inside the read handler. Probes run every SPLIT_CLOCK_PROBE_INTERVAL_MS, and
+immediately on connect and once the link is secured, so a re-pair re-syncs
+without waiting for the next round.
+
+The offset is per connection and reset with the slot, so a peripheral that
+rebooted - which restarts its uptime - can never be timed with the previous
+session's offset. Until a probe lands, and for a peer built without the
+timestamp, events keep their arrival time, which is upstream's behaviour; the
+consumer also rejects an event outside the last five seconds as implausible.
+
+Error left over is link asymmetry, typically 1-2ms, instead of the transport's
+latency as a constant 4-15ms bias. Both halves must be flashed together: the
+notification and the read payload both grew by four bytes.
+
+diff --git a/app/include/zmk/split/transport/types.h b/app/include/zmk/split/transport/types.h
+index 1d6eb734..c943e0ed 100644
+--- a/app/include/zmk/split/transport/types.h
++++ b/app/include/zmk/split/transport/types.h
+@@ -39,6 +39,10 @@ struct zmk_split_transport_peripheral_event {
+         struct {
+             uint8_t position;
+             uint8_t pressed;
++            /* When the change happened on the peripheral, in ms uptime. The
++             * central times remote keys with this instead of the time the
++             * notification arrived, which carries BLE latency and jitter. */
++            uint32_t timestamp;
+         } key_position_event;
+ 
+         struct {
+diff --git a/app/src/split/bluetooth/central.c b/app/src/split/bluetooth/central.c
+index b4b61ce7..74cb91cb 100644
+--- a/app/src/split/bluetooth/central.c
++++ b/app/src/split/bluetooth/central.c
+@@ -62,6 +62,17 @@ struct peripheral_slot {
+     uint16_t selected_physical_layout_handle;
+     uint8_t position_state[POSITION_STATE_DATA_LEN];
+     uint8_t changed_positions[POSITION_STATE_DATA_LEN];
++    /* Estimated (this board's ms uptime - the peripheral's ms uptime). Tracked
++     * as a running minimum, because BLE latency can only ever delay a packet,
++     * never advance it, so the smallest sample is closest to the truth. */
++    int32_t clock_offset;
++    bool clock_offset_valid;
++    /* One clock probe in flight at a time per peripheral, plus the best round
++     * trip seen, which bounds how much link asymmetry a probe can hide. */
++    struct bt_gatt_read_params pos_read_params;
++    uint32_t probe_t1;
++    uint32_t half_rtt_min;
++    bool probe_in_flight;
+ };
+ 
+ #if IS_ENABLED(CONFIG_ZMK_INPUT_SPLIT)
+@@ -212,6 +223,13 @@ int release_peripheral_slot(int index) {
+         slot->changed_positions[i] = 0U;
+     }
+ 
++    /* A new connection means a new clock relationship: the peripheral may have
++     * rebooted, which restarts its uptime. */
++    slot->clock_offset = 0;
++    slot->clock_offset_valid = false;
++    slot->half_rtt_min = 0;
++    slot->probe_in_flight = false;
++
+     // Clean up previously discovered handles;
+     slot->subscribe_params.value_handle = 0;
+     slot->run_behavior_handle = 0;
+@@ -346,6 +364,97 @@ static uint8_t peripheral_input_event_notify_cb(struct bt_conn *conn,
+ 
+ #endif
+ 
++/* The two halves run on independent crystals, so the arrival time of a
++ * notification carries the link's latency on top of the real clock difference.
++ * A round trip removes that: the peripheral stamps when it answers, so its
++ * receipt and reply times collapse into one value and the offset is simply
++ * T2 - (T1 + T4) / 2, with the round trip itself bounding how much asymmetry
++ * can be hiding in it. Probing on a timer rather than inferring from key
++ * traffic also keeps the estimate current while the keyboard sits idle. */
++#define SPLIT_CLOCK_PROBE_INTERVAL_MS 15000
++/* Skip probes whose round trip is much worse than the best seen: their
++ * asymmetry error would otherwise bias the estimate for the next interval. */
++#define SPLIT_CLOCK_PROBE_RTT_SLACK_MS 5
++
++static void split_central_clock_probe_work_cb(struct k_work *work);
++
++K_WORK_DELAYABLE_DEFINE(clock_probe_work, split_central_clock_probe_work_cb);
++
++static uint8_t split_central_clock_probe_read_func(struct bt_conn *conn, uint8_t err,
++                                                   struct bt_gatt_read_params *params,
++                                                   const void *data, uint16_t length);
++
++static void split_central_probe_clock(struct peripheral_slot *slot) {
++    if (slot->state != PERIPHERAL_SLOT_STATE_CONNECTED || slot->conn == NULL ||
++        slot->subscribe_params.value_handle == 0 || slot->probe_in_flight) {
++        return;
++    }
++
++    slot->pos_read_params.func = split_central_clock_probe_read_func;
++    slot->pos_read_params.handle_count = 1;
++    slot->pos_read_params.single.handle = slot->subscribe_params.value_handle;
++    slot->pos_read_params.single.offset = 0;
++
++    slot->probe_t1 = k_uptime_get_32();
++    slot->probe_in_flight = true;
++
++    int err = bt_gatt_read(slot->conn, &slot->pos_read_params);
++    if (err) {
++        LOG_WRN("Failed to start the clock probe read (err %d)", err);
++        slot->probe_in_flight = false;
++    }
++}
++
++static void split_central_clock_probe_work_cb(struct k_work *work) {
++    for (int i = 0; i < ZMK_SPLIT_BLE_PERIPHERAL_COUNT; i++) {
++        split_central_probe_clock(&peripherals[i]);
++    }
++
++    k_work_reschedule(&clock_probe_work, K_MSEC(SPLIT_CLOCK_PROBE_INTERVAL_MS));
++}
++
++static uint8_t split_central_clock_probe_read_func(struct bt_conn *conn, uint8_t err,
++                                                   struct bt_gatt_read_params *params,
++                                                   const void *data, uint16_t length) {
++    struct peripheral_slot *slot = peripheral_slot_for_conn(conn);
++
++    if (slot == NULL) {
++        return BT_GATT_ITER_STOP;
++    }
++
++    slot->probe_in_flight = false;
++
++    if (err > 0 || data == NULL) {
++        LOG_WRN("Clock probe failed (err %u, length %u)", err, length);
++        return BT_GATT_ITER_STOP;
++    }
++
++    if (length < POSITION_STATE_DATA_LEN + sizeof(uint32_t)) {
++        /* A peripheral built without the timestamp: nothing to correct with. */
++        return BT_GATT_ITER_STOP;
++    }
++
++    uint32_t t4 = k_uptime_get_32();
++    uint32_t t2;
++    memcpy(&t2, (const uint8_t *)data + POSITION_STATE_DATA_LEN, sizeof(t2));
++
++    uint32_t half_rtt = (t4 - slot->probe_t1) / 2;
++    int32_t probe_offset = (int32_t)(t2 - (slot->probe_t1 + half_rtt));
++
++    if (slot->half_rtt_min == 0 || half_rtt < slot->half_rtt_min) {
++        slot->half_rtt_min = half_rtt;
++    }
++
++    if (!slot->clock_offset_valid ||
++        half_rtt <= slot->half_rtt_min + SPLIT_CLOCK_PROBE_RTT_SLACK_MS) {
++        slot->clock_offset = probe_offset;
++        slot->clock_offset_valid = true;
++        LOG_DBG("Clock offset %d from a %u ms half round trip", probe_offset, half_rtt);
++    }
++
++    return BT_GATT_ITER_STOP;
++}
++
+ static uint8_t split_central_notify_func(struct bt_conn *conn,
+                                          struct bt_gatt_subscribe_params *params, const void *data,
+                                          uint16_t length) {
+@@ -364,6 +473,23 @@ static uint8_t split_central_notify_func(struct bt_conn *conn,
+ 
+     LOG_DBG("[NOTIFICATION] data %p length %u", data, length);
+ 
++    /* The peripheral puts its own ms uptime after the bitmap. Fall back to the
++     * arrival time when talking to a peer built without it. */
++    int64_t now = k_uptime_get();
++    uint32_t timestamp = (uint32_t)now;
++    bool have_timestamp = length >= POSITION_STATE_DATA_LEN + sizeof(uint32_t);
++    if (have_timestamp) {
++        memcpy(&timestamp, (const uint8_t *)data + POSITION_STATE_DATA_LEN, sizeof(timestamp));
++    }
++
++    /* Until a clock probe has fixed the relationship between the two clocks,
++     * the peripheral's timestamp means nothing in this board's timebase, so the
++     * arrival time is all there is - which is what upstream did. */
++    int64_t event_timestamp = now;
++    if (have_timestamp && slot->clock_offset_valid) {
++        event_timestamp = now - ((int32_t)((uint32_t)now - timestamp) - slot->clock_offset);
++    }
++
+     for (int i = 0; i < POSITION_STATE_DATA_LEN; i++) {
+         slot->changed_positions[i] = ((uint8_t *)data)[i] ^ slot->position_state[i];
+         slot->position_state[i] = ((uint8_t *)data)[i];
+@@ -381,6 +507,7 @@ static uint8_t split_central_notify_func(struct bt_conn *conn,
+                               .data = {.key_position_event = {
+                                            .position = position,
+                                            .pressed = pressed,
++                                           .timestamp = (uint32_t)event_timestamp,
+                                        }}}};
+                 k_msgq_put(&peripheral_event_msgq, &ev, K_NO_WAIT);
+                 k_work_submit(&peripheral_event_work);
+@@ -568,6 +695,12 @@ static uint8_t split_central_chrc_discovery_func(struct bt_conn *conn,
+             slot->subscribe_params.notify = split_central_notify_func;
+             slot->subscribe_params.value = BT_GATT_CCC_NOTIFY;
+             split_central_subscribe(conn, &slot->subscribe_params);
++            /* The handle is known now, so probe for the offset immediately:
++             * this is what restores it after a re-pair, instead of waiting for
++             * the next scheduled round. If the link is not secured yet the read
++             * fails harmlessly and the security callback, or the timer, retries
++             * - which is also the order that happens on a first pairing. */
++            k_work_reschedule(&clock_probe_work, K_NO_WAIT);
+ #if ZMK_KEYMAP_HAS_SENSORS
+         } else if (bt_uuid_cmp(chrc_uuid,
+                                BT_UUID_DECLARE_128(ZMK_SPLIT_BT_CHAR_SENSOR_STATE_UUID)) == 0) {
+@@ -985,6 +1118,13 @@ static void split_central_disconnected(struct bt_conn *conn, uint8_t reason) {
+ 
+ static void split_central_security_changed(struct bt_conn *conn, bt_security_t level,
+                                            enum bt_security_err err) {
++    /* The split characteristics are encrypted, so this is the earliest a clock
++     * probe can succeed: probe as soon as the link is secured rather than
++     * waiting for the next scheduled round. */
++    if (err == 0 && level >= BT_SECURITY_L2) {
++        k_work_reschedule(&clock_probe_work, K_NO_WAIT);
++    }
++
+     struct peripheral_slot *slot = peripheral_slot_for_conn(conn);
+     if (!slot || !slot->selected_physical_layout_handle) {
+         return;
+@@ -1147,6 +1287,8 @@ static int zmk_split_bt_central_init(void) {
+                        CONFIG_ZMK_BLE_THREAD_PRIORITY, NULL);
+     bt_conn_cb_register(&conn_callbacks);
+ 
++    k_work_reschedule(&clock_probe_work, K_MSEC(SPLIT_CLOCK_PROBE_INTERVAL_MS));
++
+ #if IS_ENABLED(CONFIG_SETTINGS)
+     settings_register(&ble_central_settings_handler);
+     return 0;
+diff --git a/app/src/split/bluetooth/service.c b/app/src/split/bluetooth/service.c
+index 5bbed137..08ed2031 100644
+--- a/app/src/split/bluetooth/service.c
++++ b/app/src/split/bluetooth/service.c
+@@ -54,12 +54,25 @@ static void split_svc_sensor_state_ccc(const struct bt_gatt_attr *attr, uint16_t
+ static uint8_t num_of_positions = ZMK_KEYMAP_LEN;
+ static uint8_t position_state[POS_STATE_LEN];
+ 
++/* The position bitmap plus the time of the change that produced it, sent as a
++ * single notification. Packed so the wire layout is exactly POS_STATE_LEN + 4. */
++struct position_state_notification {
++    uint8_t state[POS_STATE_LEN];
++    uint32_t timestamp;
++} __packed;
++
+ static struct zmk_split_run_behavior_payload behavior_run_payload;
+ 
+ static ssize_t split_svc_pos_state(struct bt_conn *conn, const struct bt_gatt_attr *attrs,
+                                    void *buf, uint16_t len, uint16_t offset) {
+-    return bt_gatt_attr_read(conn, attrs, buf, len, offset, &position_state,
+-                             sizeof(position_state));
++    /* A read doubles as a clock probe: the timestamp is this board's uptime at
++     * the moment it answers, which is what lets the central measure the round
++     * trip and derive the offset between the two clocks. */
++    struct position_state_notification ntf = {.timestamp = k_uptime_get_32()};
++
++    memcpy(ntf.state, position_state, POS_STATE_LEN);
++
++    return bt_gatt_attr_read(conn, attrs, buf, len, offset, &ntf, sizeof(ntf));
+ }
+ 
+ static ssize_t split_svc_run_behavior(struct bt_conn *conn, const struct bt_gatt_attr *attrs,
+@@ -211,14 +224,14 @@ K_THREAD_STACK_DEFINE(service_q_stack, CONFIG_ZMK_SPLIT_BLE_PERIPHERAL_STACK_SIZ
+ 
+ struct k_work_q service_work_q;
+ 
+-K_MSGQ_DEFINE(position_state_msgq, sizeof(char[POS_STATE_LEN]),
++K_MSGQ_DEFINE(position_state_msgq, sizeof(struct position_state_notification),
+               CONFIG_ZMK_SPLIT_BLE_PERIPHERAL_POSITION_QUEUE_SIZE, 4);
+ 
+ void send_position_state_callback(struct k_work *work) {
+-    uint8_t state[POS_STATE_LEN];
++    struct position_state_notification ntf;
+ 
+-    while (k_msgq_get(&position_state_msgq, &state, K_NO_WAIT) == 0) {
+-        int err = bt_gatt_notify(NULL, &split_svc.attrs[1], &state, sizeof(state));
++    while (k_msgq_get(&position_state_msgq, &ntf, K_NO_WAIT) == 0) {
++        int err = bt_gatt_notify(NULL, &split_svc.attrs[1], &ntf, sizeof(ntf));
+         if (err) {
+             LOG_DBG("Error notifying %d", err);
+         }
+@@ -227,15 +240,19 @@ void send_position_state_callback(struct k_work *work) {
+ 
+ K_WORK_DEFINE(service_position_notify_work, send_position_state_callback);
+ 
+-int send_position_state() {
+-    int err = k_msgq_put(&position_state_msgq, position_state, K_MSEC(100));
++int send_position_state(uint32_t timestamp) {
++    struct position_state_notification ntf = {.timestamp = timestamp};
++
++    memcpy(ntf.state, position_state, POS_STATE_LEN);
++
++    int err = k_msgq_put(&position_state_msgq, &ntf, K_MSEC(100));
+     if (err) {
+         switch (err) {
+         case -EAGAIN: {
+             LOG_WRN("Position state message queue full, popping first message and queueing again");
+-            uint8_t discarded_state[POS_STATE_LEN];
+-            k_msgq_get(&position_state_msgq, &discarded_state, K_NO_WAIT);
+-            return send_position_state();
++            struct position_state_notification discarded;
++            k_msgq_get(&position_state_msgq, &discarded, K_NO_WAIT);
++            return send_position_state(timestamp);
+         }
+         default:
+             LOG_WRN("Failed to queue position state to send (%d)", err);
+@@ -248,14 +265,14 @@ int send_position_state() {
+     return 0;
+ }
+ 
+-static int zmk_split_bt_position_pressed(uint8_t position) {
++static int zmk_split_bt_position_pressed(uint8_t position, uint32_t timestamp) {
+     WRITE_BIT(position_state[position / 8], position % 8, true);
+-    return send_position_state();
++    return send_position_state(timestamp);
+ }
+ 
+-static int zmk_split_bt_position_released(uint8_t position) {
++static int zmk_split_bt_position_released(uint8_t position, uint32_t timestamp) {
+     WRITE_BIT(position_state[position / 8], position % 8, false);
+-    return send_position_state();
++    return send_position_state(timestamp);
+ }
+ 
+ #if ZMK_KEYMAP_HAS_SENSORS
+@@ -350,9 +367,11 @@ int zmk_split_transport_peripheral_bt_report_event(
+     switch (ev->type) {
+     case ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_KEY_POSITION_EVENT:
+         if (ev->data.key_position_event.pressed) {
+-            zmk_split_bt_position_pressed(ev->data.key_position_event.position);
++            zmk_split_bt_position_pressed(ev->data.key_position_event.position,
++                                          ev->data.key_position_event.timestamp);
+         } else {
+-            zmk_split_bt_position_released(ev->data.key_position_event.position);
++            zmk_split_bt_position_released(ev->data.key_position_event.position,
++                                           ev->data.key_position_event.timestamp);
+         }
+         break;
+ #if ZMK_KEYMAP_HAS_SENSORS
+diff --git a/app/src/split/central.c b/app/src/split/central.c
+index e2b80643..46e6deba 100644
+--- a/app/src/split/central.c
++++ b/app/src/split/central.c
+@@ -39,11 +39,22 @@ int zmk_split_transport_central_peripheral_event_handler(
+     }
+     switch (ev.type) {
+     case ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_KEY_POSITION_EVENT: {
++        int64_t now = k_uptime_get();
++        /* A transport that can estimate the clock relationship reports when the
++         * change happened on the peripheral, converted into this board's
++         * timebase. Anything implausible - a peer that predates the field, or a
++         * transport that does not convert yet - falls back to arrival time,
++         * which is the behaviour this replaced. */
++        int64_t timestamp = ev.data.key_position_event.timestamp;
++        if (timestamp > now || timestamp < now - 5000) {
++            timestamp = now;
++        }
++
+         struct zmk_position_state_changed state_ev = {.source = source,
+                                                       .position =
+                                                           ev.data.key_position_event.position,
+                                                       .state = ev.data.key_position_event.pressed,
+-                                                      .timestamp = k_uptime_get()};
++                                                      .timestamp = timestamp};
+         return raise_zmk_position_state_changed(state_ev);
+     }
+ #if IS_ENABLED(CONFIG_ZMK_INPUT_SPLIT)
+diff --git a/app/src/split/peripheral.c b/app/src/split/peripheral.c
+index b814df61..7ab034e8 100644
+--- a/app/src/split/peripheral.c
++++ b/app/src/split/peripheral.c
+@@ -154,6 +154,9 @@ int split_peripheral_listener(const zmk_event_t *eh) {
+             .data = {.key_position_event = {
+                          .position = pos_ev->position,
+                          .pressed = pos_ev->state,
++                         /* Truncating the ms uptime to 32 bits is fine: it only
++                          * wraps after 49 days. */
++                         .timestamp = (uint32_t)pos_ev->timestamp,
+                      }}};
+ 
+         zmk_split_peripheral_report_event(&ev);

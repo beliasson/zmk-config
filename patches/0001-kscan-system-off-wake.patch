@@ -1,0 +1,24 @@
+System OFF wake for the swifty shield.
+
+zmk,kscan-gpio-direct configures its pins with GPIO_INT_LEVEL_ACTIVE, and the
+nRF GPIO driver only routes a pin through the DETECT/PORT sense mechanism - the
+only thing that can wake the chip from System OFF - for EDGE interrupts on pins
+listed in the controller's sense-edge-mask. Scanning is unaffected: the driver
+polls the pins to detect a release.
+
+Needs, in config/boards/shields/swifty/swifty.dtsi:
+  wakeup-source on kscan0, and sense-edge-mask on gpio0/gpio1 for all 25 keys.
+
+diff --git a/app/module/drivers/kscan/kscan_gpio_direct.c b/app/module/drivers/kscan/kscan_gpio_direct.c
+index 45fc8634..25f580ee 100644
+--- a/app/module/drivers/kscan/kscan_gpio_direct.c
++++ b/app/module/drivers/kscan/kscan_gpio_direct.c
+@@ -98,7 +98,7 @@ static int kscan_direct_interrupt_configure(const struct device *dev, const gpio
+ 
+ #if USE_INTERRUPTS
+ static int kscan_direct_interrupt_enable(const struct device *dev) {
+-    return kscan_direct_interrupt_configure(dev, GPIO_INT_LEVEL_ACTIVE);
++    return kscan_direct_interrupt_configure(dev, GPIO_INT_EDGE_BOTH);
+ }
+ #endif
+ 

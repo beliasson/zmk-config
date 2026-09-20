@@ -1,38 +1,17 @@
-Local patches to ZMK, applied by build.sh before every build.
-(west update resets the zmk checkout, so build.sh re-applies them each time.
-Pass --no-patch to skip that and build the checkout as it is.)
+Breathe the underglow white once on every boot.
 
-kscan_gpio_direct.c
-  interrupt_enable(): EDGE instead of LEVEL interrupts, which is what makes the
-  nRF GPIO driver route masked pins through the DETECT/PORT sense mechanism -
-  the only thing that can wake the chip from System OFF.
+Waking from System OFF is a reboot, so this doubles as the wake indicator. It
+renders a fixed white at 30% (UNDERGLOW_BOOT_BRT) for about 1.2s
+(UNDERGLOW_BOOT_TICKS), deliberately ignoring the saved colour, brightness and
+on/off state so that it shows whatever the configuration is.
 
-rgb_underglow.c
-  Breathe the strip white once on every boot, peaking at 30%. Waking from
-  System OFF is a reboot, so that is also the wake indicator, and it ignores
-  the saved colour, brightness and on/off state so that it shows whatever the
-  configuration is. Runs on its own timer, because the auto-off handlers stop
-  the normal tick timer, and re-asserts the external power rail every frame,
-  because auto-off turns that rail off with the underglow - on battery, during
-  boot. Knobs: UNDERGLOW_BOOT_TICKS (50ms per frame) and UNDERGLOW_BOOT_BRT.
+Two things it has to work around, both documented at the code: it runs on its
+own timer, because the auto-off handlers stop the normal tick timer, and it
+re-asserts the external power rail on every frame, because auto-off disables
+that rail along with the underglow - on battery that lands during boot. The
+rail is also re-enabled when the saved on-state is restored from settings,
+which happens in main(), after SYS_INIT.
 
-Needs, in config/boards/shields/swifty/swifty.dtsi:
-  wakeup-source on kscan0, and sense-edge-mask on gpio0/gpio1 for all 25 keys.
-
-Refresh with:  git -C zmk diff > zmk.patch
-diff --git a/app/module/drivers/kscan/kscan_gpio_direct.c b/app/module/drivers/kscan/kscan_gpio_direct.c
-index 45fc8634..25f580ee 100644
---- a/app/module/drivers/kscan/kscan_gpio_direct.c
-+++ b/app/module/drivers/kscan/kscan_gpio_direct.c
-@@ -98,7 +98,7 @@ static int kscan_direct_interrupt_configure(const struct device *dev, const gpio
- 
- #if USE_INTERRUPTS
- static int kscan_direct_interrupt_enable(const struct device *dev) {
--    return kscan_direct_interrupt_configure(dev, GPIO_INT_LEVEL_ACTIVE);
-+    return kscan_direct_interrupt_configure(dev, GPIO_INT_EDGE_BOTH);
- }
- #endif
- 
 diff --git a/app/src/rgb_underglow.c b/app/src/rgb_underglow.c
 index 3453fb44..84f5273f 100644
 --- a/app/src/rgb_underglow.c
