@@ -48,16 +48,43 @@
         rdy-gpios   = <&gpio1 4 GPIO_ACTIVE_HIGH>;
         reset-gpios = <&gpio0 28 GPIO_ACTIVE_LOW>;
 
+        /* Invert the cursor's vertical axis, applied by the chip itself. This
+         * only works because the driver re-applies the configuration after a
+         * chip reset - without that, the axis settings silently reverted to the
+         * chip's factory defaults, which look like a rotated cursor. */
+        flip-y;
+
         one-finger-tap;
         two-finger-tap;
+        three-finger-tap;
         press-and-hold;
+        /* Held for this long IN ADDITION to the chip's own tap time, so keep it
+         * comfortably above it - too short and a stationary press is classified
+         * as a tap instead of a hold. */
         press-and-hold-time = <250>;
+        /* Tap, then touch + drag within the 200ms window: engages the same
+         * drag-lock with no hold-time wait. Arms only off a clean one-finger tap
+         * and cancels on multi-finger activity, so double-clicks pass through. */
+        tap-then-hold;
+
+        /* Cursor speed, in-driver: 100 = chip default, 400 = 4x. Scroll is not
+         * scaled from it (the driver only couples scroll when SLOWING the
+         * cursor), so scrolling stays at the chip's own rate - one wheel tick
+         * per 32 counts. */
+        cursor-scale-percent = <400>;
+
+        /* Wheel rate, independent of the cursor: 100 = the chip's own rate,
+         * 75 = a quarter slower, 50 = half. */
+        scroll-scale-percent = <75>;
 
         scroll;
     };
 };
 
 / {
+    /* Orientation and speed are both handled by the driver now: flip-y and
+     * cursor-scale-percent on the tps65 node above. No input processors. */
+
     tps65_listener: tps65_listener {
         compatible = "zmk,input-listener";
         device = <&tps65>;

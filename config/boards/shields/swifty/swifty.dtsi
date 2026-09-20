@@ -18,7 +18,7 @@
 
 	default_transform: keymap_transform_0 {
 		compatible = "zmk,matrix-transform";
-		
+
 		columns = <50>;
 		rows = <1>;
 
@@ -63,7 +63,7 @@
 	};
 
 
-	physical_layout0: physical_layout_0 { 
+	physical_layout0: physical_layout_0 {
 		compatible = "zmk,physical-layout";
 		display-name = "6 Column. 7 thumb keys";
 
@@ -137,28 +137,21 @@
 	nfct-pins-as-gpios;
 };
 
-&pinctrl {
-	/*
-	 * Placeholder until the WS2812 data line is routed to a real
-	 * pad. NRF_PSEL_DISCONNECTED lets the DT parse so the rest of
-	 * the keyboard builds even without functioning underglow.
-	 * Replace with the real <NRF_PSEL(I2S_SDOUT, port, pin)> once
-	 * the LED data pin is known.
-	 */
-	i2s0_default_alt: i2s0_default_alt {
-		group1 {
-			psels = <NRF_PSEL_DISCONNECTED(I2S_SDOUT)>;
-		};
-	};
-};
+/*
+ * The i2s0 pinctrl (I2S_SDOUT on P1.5 for the WS2812 strip) is defined by the
+ * swippy board in swippy-pinctrl.dtsi. Do not redeclare i2s0_default_alt here:
+ * a shield-level group shadows the board's and configures only the pins it
+ * lists, which silently breaks underglow.
+ */
 
 i2s_led: &i2s0 {
 	/*
-	 * Disabled until the WS2812 data line is routed to a real
-	 * pad. With status="okay" + disconnected pinctrl, the I2S
-	 * driver init can wedge the boot before USB enumerates.
+	 * Driven from the board's i2s0_default_alt group (SDOUT = P1.5).
+	 * An earlier revision had status="okay" with a *disconnected* psel,
+	 * which wedged the boot before USB enumerated - that was the
+	 * placeholder's fault, not i2s0's, so keep the board's real pins.
 	 */
-	status = "disabled";
+	status = "okay";
 	pinctrl-0 = <&i2s0_default_alt>;
 	pinctrl-names = "default";
 

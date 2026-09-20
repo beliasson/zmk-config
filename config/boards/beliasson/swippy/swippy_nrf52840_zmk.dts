@@ -35,6 +35,17 @@
     aliases {
         led0 = &green_led;
     };
+
+    /*
+     * Ext power (WS2812 strip). The node name must stay "EXT_POWER" both to
+     * match the label the settings subsystem expects and because the swifty
+     * shield overrides &{/EXT_POWER} to point at its own control pin (P1.6).
+     */
+    EXT_POWER {
+        compatible = "zmk,ext-power-generic";
+        control-gpios = <&gpio1 6 GPIO_ACTIVE_HIGH>;
+        init-delay-ms = <50>;
+    };
 };
 
 &gpiote {
