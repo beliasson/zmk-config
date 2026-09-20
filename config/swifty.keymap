@@ -141,11 +141,11 @@
           display-name = "Function";
           bindings = <
 // ╭─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────╮                               ╭─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────╮
-     &kp ESC       &kp F1        &kp F2        &kp F3        &kp F4        &kp F5                                        &bt BT_SEL 0  &bt BT_SEL 1  &bt BT_SEL 2  &bt BT_SEL 3  &bt BT_SEL 4  &kp BSPC
+     &kp ESC       &kp F1        &kp F2        &kp F3        &kp F4        &kp F5                                        &kp C_REWIND  &kp C_PREV    &kp C_PP      &kp C_NEXT    &kp C_STOP    &kp BSPC
 // ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤                               ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
      &kp LSHFT     &kp F6        &kp F7        &kp F8        &kp F9        &kp F10                                       &kp CAPS      &kp LSHIFT    &kp LALT      &kp LGUI      &kp LCTRL     &kp RSHFT
 // ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤─────────────╮   ╭─────────────├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
-     &kp LCTRL     &caps_word    &trans        &trans        &kp F11       &kp F12       &none             &none         &out OUT_USB  &out OUT_BLE  &kp PSCRN     &kp PAUSE_BREAK &bt BT_CLR  &kp RCTRL
+     &kp LCTRL     &caps_word    &trans        &trans        &kp F11       &kp F12       &none             &none         &kp PSCRN     &kp C_VOL_DN  &kp C_MUTE    &kp C_VOL_UP   &kp PAUSE_BREAK &kp RCTRL
 // ╰─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤   ┼─────────────├─────────────┼─────────────┼─────────────┼─────────────┴─────────────┴─────────────╯
                    &mt LGUI DEL   &mt LALT BSPC  &mt LCTRL ESC  &mt LSHFT RET  &ltl SYM SPACE &ltl NAV TAB   &ltr NAV RET   &ltr SYM BSPC  &mt RSHFT TAB  &mt RCTRL DEL  &mt RALT SPACE &mt RGUI ESC
 //               ╰─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────╯   ╰─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────╯
@@ -160,7 +160,7 @@
 // ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤                               ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
      &trans        &trans        &trans        &kp K_LOCK    &rgb_ug RGB_EFF &rgb_ug RGB_BRD                             &trans        &trans        &kp K_LOCK    &trans        &trans        &trans
 // ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤─────────────╮   ╭─────────────├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
-     &trans        &studio_unlock &trans       &trans        &trans        &trans        &none             &none          &trans       &trans        &trans        &trans        &studio_unlock &trans
+     &trans        &studio_unlock &trans       &trans        &rgb_ug RGB_SPD &rgb_ug RGB_SPI        &none             &none          &trans       &trans        &trans        &trans        &studio_unlock &trans
 // ╰─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤   ┼─────────────├─────────────┼─────────────┼─────────────┼─────────────┴─────────────┴─────────────╯
                    &mt LGUI DEL   &mt LALT BSPC  &mt LCTRL ESC  &mt LSHFT RET  &ltl SYM SPACE &ltl NAV TAB   &ltr NAV RET   &ltr SYM BSPC  &mt RSHFT TAB  &mt RCTRL DEL  &mt RALT SPACE &mt RGUI ESC
 //               ╰─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────╯   ╰─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────╯
@@ -171,9 +171,9 @@
           display-name = "MiscR";
           bindings = <
 // ╭─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────╮                               ╭─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────╮
-     &trans        &kp C_REWIND  &kp C_PREV    &kp C_PP      &kp C_NEXT    &kp C_VOL_UP                                  &trans        &trans        &trans        &sys_reset    &bootloader   &trans
+     &trans        &kp C_REWIND  &kp C_PREV    &kp C_PP      &kp C_NEXT    &kp C_VOL_UP                                  &bt BT_SEL 0  &bt BT_SEL 1  &bt BT_SEL 2  &bt BT_SEL 3  &bt BT_SEL 4  &bt BT_CLR
 // ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤                               ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
-     &trans        &trans        &trans        &kp C_STOP    &trans        &kp C_VOL_DN                                  &trans        &trans        &kp K_LOCK    &trans        &trans        &trans
+     &trans        &trans        &trans        &kp C_STOP    &trans        &kp C_VOL_DN                                  &out OUT_USB  &out OUT_BLE  &kp K_LOCK    &trans        &trans        &trans
 // ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤─────────────╮   ╭─────────────├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤
      &trans        &studio_unlock &trans       &trans        &trans        &kp C_MUTE    &none             &none         &trans        &trans        &trans        &trans        &studio_unlock &trans
 // ╰─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤   ┼─────────────├─────────────┼─────────────┼──────────────┼─────────────┴─────────────┴─────────────╯
