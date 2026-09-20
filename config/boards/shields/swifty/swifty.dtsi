@@ -33,6 +33,9 @@
 
 	kscan0: kscan_0 {
 		compatible = "zmk,kscan-gpio-direct";
+		/* Lets ZMK keep this device configured when the keyboard powers
+		 * off, so the key interrupts survive into System OFF. */
+		wakeup-source;
 		input-gpios
 		= <&gpio1 10 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>
 		, <&gpio1 12 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>
@@ -181,3 +184,19 @@ i2s_led: &i2s0 {
 		led-strip = &led_strip;
 	};
 };
+
+/*
+ * Wake from System OFF on any key.
+ *
+ * sense-edge-mask marks the key pins as edge-sensitive, so the nRF GPIO driver
+ * arms the shared DETECT/PORT-sense mechanism for them (one channel per port)
+ * instead of allocating a GPIOTE per pin - a GPIOTE cannot wake the chip from
+ * System OFF, a sense line can. The masks are the 25 kscan pins per port.
+ */
+&gpio0 { sense-edge-mask = <0xE3FBF600>; }; /* P0.9,10,12-17,19-25,29-31 */
+&gpio1 { sense-edge-mask = <0x0000FC01>; }; /* P1.0,10-15 */
+
+/*
+ * The wake is a reset, so the press that wakes the keyboard is not reported as
+ * a keypress: press twice, or hold the key and press it again.
+ */
