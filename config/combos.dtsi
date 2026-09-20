@@ -1,69 +1,69 @@
-/*                KEY POSITIONS
-36 keys:
-  ╭────────────────────╮ ╭────────────────────╮
-  │  0   1   2   3   4 │ │  5   6   7   8   9 │
-  │ 10  11  12  13  14 │ │ 15  16  17  18  19 │
-  │ 20  21  22  23  24 │ │ 25  26  27  28  29 │
-  ╰───────╮ 30  31  32 │ │ 33  34  35 ╭───────╯
-          ╰────────────╯ ╰────────────╯      */
+/*  SWIFTY KEY POSITIONS (50 keys)
+  ╭───────────────────────────╮ ╭────────────────────────────╮
+  │  0   1   2   3   4   5    │ │     6    7   8   9  10  11 │
+  │ 12  13  14  15  16  17    │ │     18  19  20  21  22  23 │
+  │ 24  25  26  27  28  29 30 │ │ 31  32  33  34  35  36  37 │
+  ╰───────╮ 38 39 40 41 42 43 │ │ 44 45 46 47 48 49 ╭────────╯
+          ╰───────────────────╯ ╰───────────────────╯
+
+  All 30 symbols from the Symbols layer, reachable on the base layer
+  by pressing the two adjacent keys that straddle the symbol's
+  Symbols-layer position (paired toward the outer edge).            */
 
 #define FAST 40
 #define SLOW 60
 #define IDLE_TIME 50
 
-#define COMBO(NAME, BINDINGS, KEYPOS, TERM, ...) \
+#define COMBO(NAME, BINDINGS, KEYPOS, TERM) \
     combo_##NAME { \
         timeout-ms = <TERM>; \
         bindings = <BINDINGS>; \
         key-positions = <KEYPOS>; \
-        layers = <CMK SYM NAV>; \
+        layers = <CMK NAV>; \
         require-prior-idle-ms = <IDLE_TIME>; \
-		__VA_ARGS__ \
     };
 
 / {
     combos {
         compatible = "zmk,combos";
-        // // UpperRow Left: &:#^
-        // COMBO(amps,   &kp AMPS,      0  1, FAST)
-        // COMBO(colon,  &kp COLON,     1  2, FAST)
-        // COMBO(hash,   &kp HASH,      2  3, FAST)
-        // COMBO(percnt, &kp CARET,     3  4, FAST)
-        // // % squeezes between upper left and right
-        // COMBO(caret,  &kp PRCNT,     4  5, SLOW)
-        // // UpperRow Right: $";*
-        // COMBO(dollar, &kp DLLR,      5  6, FAST)
-        // COMBO(dqt,    &kp DQT,       6  7, FAST)
-        // COMBO(semi,   &kp SEMI,      7  8, FAST)
-        // COMBO(astrk,  &kp ASTRK,     8  9, FAST)
-        // // HomeRow Left: [({<
-        // COMBO(lbkt,   &kp LBKT,     10 11, FAST)
-        // COMBO(lpar,   &kp LPAR,     11 12, FAST)
-        // COMBO(lbrc,   &kp LBRC,     12 13, FAST)
-        // COMBO(lt,     &kp LT,       13 14, FAST)
-        // // ! squeezes between upper left and right
-        // COMBO(excl,   &kp EXCL,     14 15, SLOW)
-        // // HomeRow Right: >})]
-        // COMBO(gt,     &kp GT,       15 16, FAST)
-        // COMBO(rbrc,   &kp RBRC,     16 17, FAST)
-        // COMBO(rpar,   &kp RPAR,     17 18, FAST)
-        // COMBO(rbkt,   &kp RBKT,     18 19, FAST)
-        // // BottomRow Left: ~-_`
-        // COMBO(tilde,  &kp TILDE,    20 21, FAST)
-        // COMBO(under,  &kp UNDER,    21 22, FAST)
-        // COMBO(minus,  &kp MINUS,    22 23, FAST)
-        // COMBO(grave,  &kp GRAVE,    23 24, FAST)
-        // // ? squeezes between upper left and right
-        // COMBO(at,  &kp AT,          24 25, SLOW)
-        // // BottomRow Right: |+=\
-        // COMBO(pipe,   &kp PIPE,     25 26, FAST)
-        // COMBO(plus,   &kp PLUS,     26 27, FAST)
-        // COMBO(equal,  &kp EQUAL,    27 28, FAST)
-        // COMBO(bslh,   &kp BSLH,     28 29, FAST)
-        
-        // alt-tab support
-        // COMBO(tab,    &kp TAB,      11 13, FAST)
-        
-        // COMBO(capswd, &caps_word,   13 16, SLOW)
+
+        // ── Row 0 left: ` ! @ # $ ──
+        COMBO(grave,  &kp GRAVE,  0  1, FAST)
+        COMBO(excl,   &kp EXCL,   1  2, FAST)
+        COMBO(at,     &kp AT,     2  3, FAST)
+        COMBO(hash,   &kp HASH,   3  4, FAST)
+        COMBO(dllr,   &kp DLLR,   4  5, SLOW)
+        // ── Row 0 right: % ^ & * ? ──
+        COMBO(prcnt,  &kp PRCNT,  6  7, SLOW)
+        COMBO(caret,  &kp CARET,  7  8, FAST)
+        COMBO(amps,   &kp AMPS,   8  9, FAST)
+        COMBO(astrk,  &kp ASTRK,  9 10, FAST)
+        COMBO(qmark,  &kp QMARK, 10 11, FAST)
+
+        // ── Row 1 left: [ ] ( ) < ──
+        COMBO(lbkt,   &kp LBKT,  12 13, FAST)
+        COMBO(rbkt,   &kp RBKT,  13 14, FAST)
+        COMBO(lpar,   &kp LPAR,  14 15, FAST)
+        COMBO(rpar,   &kp RPAR,  15 16, FAST)
+        COMBO(lt,     &kp LT,    16 17, SLOW)
+        // ── Row 1 right: > { } : ; ──
+        COMBO(gt,     &kp GT,    18 19, SLOW)
+        COMBO(lbrc,   &kp LBRC,  19 20, FAST)
+        COMBO(rbrc,   &kp RBRC,  20 21, FAST)
+        COMBO(colon,  &kp COLON, 21 22, FAST)
+        COMBO(semi,   &kp SEMI,  22 23, FAST)
+
+        // ── Row 2 left: ~ " ' + - ──
+        COMBO(tilde,  &kp TILDE, 24 25, FAST)
+        COMBO(dqt,    &kp DQT,   25 26, FAST)
+        COMBO(sqt,    &kp SQT,   26 27, FAST)
+        COMBO(plus,   &kp PLUS,  27 28, FAST)
+        COMBO(minus,  &kp MINUS, 28 29, SLOW)
+        // ── Row 2 right: _ = | \ / ──
+        COMBO(under,  &kp UNDER, 32 33, SLOW)
+        COMBO(equal,  &kp EQUAL, 33 34, FAST)
+        COMBO(pipe,   &kp PIPE,  34 35, FAST)
+        COMBO(bslh,   &kp BSLH,  35 36, FAST)
+        COMBO(slash,  &kp SLASH, 36 37, FAST)
     };
 };
