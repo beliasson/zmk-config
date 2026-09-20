@@ -1,16 +1,23 @@
-Local patch to ZMK, applied by build.sh before every build.
-(west update resets the zmk checkout, so build.sh re-applies this each time.)
+Local patches to ZMK, applied by build.sh before every build.
+(west update resets the zmk checkout, so build.sh re-applies them each time.
+Pass --no-patch to skip that and build the checkout as it is.)
 
-Why: zmk,kscan-gpio-direct configures its pins with GPIO_INT_LEVEL_ACTIVE. The
-nRF GPIO driver only routes a pin through the DETECT/PORT-sense mechanism - the
-one that can wake the chip from System OFF - for EDGE interrupts on pins listed
-in sense-edge-mask. A level interrupt takes a GPIOTE channel instead, which
-cannot wake from System OFF. Behaviour while running is unchanged: the driver
-polls the pins to detect a release, so edge interrupts scan the same way.
+kscan_gpio_direct.c
+  interrupt_enable(): EDGE instead of LEVEL interrupts, which is what makes the
+  nRF GPIO driver route masked pins through the DETECT/PORT sense mechanism -
+  the only thing that can wake the chip from System OFF.
 
-Requires, in config/boards/shields/swifty/swifty.dtsi:
-  - wakeup-source; on kscan0            (ZMK then leaves it configured on suspend)
-  - sense-edge-mask on &gpio0/&gpio1    (arm the sense lines for the key pins)
+rgb_underglow.c
+  Breathe the strip white once on every boot, peaking at 30%. Waking from
+  System OFF is a reboot, so that is also the wake indicator, and it ignores
+  the saved colour, brightness and on/off state so that it shows whatever the
+  configuration is. Runs on its own timer, because the auto-off handlers stop
+  the normal tick timer, and re-asserts the external power rail every frame,
+  because auto-off turns that rail off with the underglow - on battery, during
+  boot. Knobs: UNDERGLOW_BOOT_TICKS (50ms per frame) and UNDERGLOW_BOOT_BRT.
+
+Needs, in config/boards/shields/swifty/swifty.dtsi:
+  wakeup-source on kscan0, and sense-edge-mask on gpio0/gpio1 for all 25 keys.
 
 Refresh with:  git -C zmk diff > zmk.patch
 diff --git a/app/module/drivers/kscan/kscan_gpio_direct.c b/app/module/drivers/kscan/kscan_gpio_direct.c
@@ -25,4 +32,118 @@ index 45fc8634..25f580ee 100644
 +    return kscan_direct_interrupt_configure(dev, GPIO_INT_EDGE_BOTH);
  }
  #endif
+ 
+diff --git a/app/src/rgb_underglow.c b/app/src/rgb_underglow.c
+index 3453fb44..84f5273f 100644
+--- a/app/src/rgb_underglow.c
++++ b/app/src/rgb_underglow.c
+@@ -66,6 +66,19 @@ static struct led_rgb pixels[STRIP_NUM_PIXELS];
+ 
+ static struct rgb_underglow_state state;
+ 
++/* Breathe the strip white once on every boot, at a fixed brightness. Waking
++ * from System OFF is a reboot, so this doubles as the wake indicator, and it
++ * deliberately ignores the saved colour, brightness and on/off state: it is an
++ * indicator for the user, not the underglow doing its normal thing.
++ *
++ * It runs on its own timer on purpose: the auto-off handlers stop the normal
++ * tick timer, and with AUTO_OFF_USB on battery the USB one fires during boot,
++ * which would kill the animation before its first frame. */
++#define UNDERGLOW_BOOT_TICKS 24 /* 50ms per frame, so ~1.2s per breath */
++#define UNDERGLOW_BOOT_BRT 30   /* percent, peak of the breath */
++
++static uint8_t boot_ticks;
++
+ #if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER)
+ static const struct device *const ext_power = DEVICE_DT_GET(DT_INST(0, zmk_ext_power_generic));
+ #endif
+@@ -175,7 +188,66 @@ static void zmk_rgb_underglow_effect_swirl(void) {
+     state.animation_step = state.animation_step % HUE_MAX;
+ }
+ 
++static void zmk_rgb_underglow_boot_work(struct k_work *work);
++
++K_WORK_DEFINE(underglow_boot_work, zmk_rgb_underglow_boot_work);
++
++static void zmk_rgb_underglow_boot_handler(struct k_timer *timer) {
++    k_work_submit_to_queue(zmk_workqueue_lowprio_work_q(), &underglow_boot_work);
++}
++
++K_TIMER_DEFINE(underglow_boot, zmk_rgb_underglow_boot_handler, NULL);
++
++static void zmk_rgb_underglow_boot_work(struct k_work *work) {
++    const uint8_t half = UNDERGLOW_BOOT_TICKS / 2;
++    /* Hue 0 with saturation 0 is white in hsb, and the saved brightness is
++     * ignored along with it - the breath is an indicator. */
++    struct zmk_led_hsb hsb = {.h = 0, .s = 0, .b = 0};
++
++#if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER)
++    /* Re-asserted on every frame, not once in init: the auto-off listeners
++     * disable this rail along with the underglow, and on battery the USB one
++     * fires around boot, so a single enable can be undone mid-fade. */
++    ext_power_enable(ext_power);
++#endif
++
++    hsb.b = (boot_ticks > half) ? (UNDERGLOW_BOOT_TICKS - boot_ticks) * UNDERGLOW_BOOT_BRT / half
++                                : boot_ticks * UNDERGLOW_BOOT_BRT / half;
++
++    for (int i = 0; i < STRIP_NUM_PIXELS; i++) {
++        /* Not hsb_scale_zero_max(): the breath level must not be scaled by the
++         * configured underglow maximum. */
++        pixels[i] = hsb_to_rgb(hsb);
++    }
++
++    if (--boot_ticks == 0) {
++        k_timer_stop(&underglow_boot);
++
++        if (!state.on) {
++            /* Nothing else renders, so leave the strip dark instead of on the
++             * animation's last frame, and hand the rail back to the auto-off
++             * power saving. */
++            for (int i = 0; i < STRIP_NUM_PIXELS; i++) {
++                pixels[i] = (struct led_rgb){r : 0, g : 0, b : 0};
++            }
++#if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER)
++            ext_power_disable(ext_power);
++#endif
++        }
++    }
++
++    int err = led_strip_update_rgb(led_strip, pixels, STRIP_NUM_PIXELS);
++    if (err < 0) {
++        LOG_ERR("Failed to update the RGB strip (%d)", err);
++    }
++}
++
+ static void zmk_rgb_underglow_tick(struct k_work *work) {
++    if (boot_ticks > 0) {
++        // The boot animation is driving the strip.
++        return;
++    }
++
+     switch (state.current_effect) {
+     case UNDERGLOW_EFFECT_SOLID:
+         zmk_rgb_underglow_effect_solid();
+@@ -222,6 +294,12 @@ static int rgb_settings_set(const char *name, size_t len, settings_read_cb read_
+         rc = read_cb(cb_arg, &state, sizeof(state));
+         if (rc >= 0) {
+             if (state.on) {
++#if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER)
++                /* The rail has to come back with the state: the boot breath can
++                 * have switched it off before these settings were restored, and
++                 * then the animation would render into a dark strip. */
++                ext_power_enable(ext_power);
++#endif
+                 k_timer_start(&underglow_tick, K_NO_WAIT, K_MSEC(50));
+             }
+ 
+@@ -277,6 +355,9 @@ static int zmk_rgb_underglow_init(void) {
+         k_timer_start(&underglow_tick, K_NO_WAIT, K_MSEC(50));
+     }
+ 
++    boot_ticks = UNDERGLOW_BOOT_TICKS;
++    k_timer_start(&underglow_boot, K_NO_WAIT, K_MSEC(50));
++
+     return 0;
+ }
  

@@ -7,6 +7,7 @@
 #   ./build.sh right        # build + flash the right half
 #   ./build.sh --no-flash   # build only
 #   ./build.sh left --no-flash
+#   ./build.sh --no-patch   # skip zmk.patch, building the zmk tree as it is
 #
 #   ./build.sh reset        # build the settings-reset firmware. Flash it to BOTH
 #                           #   halves to clear the stored BLE bonds (including the
@@ -61,7 +62,8 @@ echo "SDK: $ZEPHYR_SDK_INSTALL_DIR"
 # Local ZMK patches. zmk.patch is applied to the zmk checkout on every build
 # because `west update` resets it. --reverse --check detects the already-applied
 # state, so this is idempotent and a stale patch fails loudly instead of
-# silently building unpatched firmware.
+# silently building unpatched firmware. Pass --no-patch to build the checkout
+# as-is, which is what you want while iterating on the patch itself.
 patch_zmk() {
     local patch="$ROOT/zmk.patch"
     [[ -f "$patch" ]] || return 0
@@ -114,17 +116,19 @@ flash() { # $1 = left | right
 sides=()
 do_flash=1
 do_build=1
+do_patch=1
 for arg in "$@"; do
     case "$arg" in
         left | right | reset) sides+=("$arg") ;;
         --no-flash) do_flash=0 ;;
         --no-build) do_build=0 ;;
+        --no-patch) do_patch=0 ;;
         -h | --help)
-            echo "usage: $0 [left|right|reset] [--no-flash] [--no-build]"
+            echo "usage: $0 [left|right|reset] [--no-flash] [--no-build] [--no-patch]"
             exit 0
             ;;
         *)
-            echo "usage: $0 [left|right|reset] [--no-flash] [--no-build]" >&2
+            echo "usage: $0 [left|right|reset] [--no-flash] [--no-build] [--no-patch]" >&2
             exit 2
             ;;
     esac
@@ -132,7 +136,11 @@ done
 [[ ${#sides[@]} -gt 0 ]] || sides=(left right)
 
 if [[ $do_build -eq 1 ]]; then
-    patch_zmk
+    if [[ $do_patch -eq 1 ]]; then
+        patch_zmk
+    else
+        echo "zmk.patch: skipped (--no-patch)"
+    fi
 fi
 
 for side in "${sides[@]}"; do
